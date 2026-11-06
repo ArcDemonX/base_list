@@ -900,7 +900,8 @@ function importData(file) {
   const reader = new FileReader();
   reader.onload = async ev => {
     try {
-      const data = JSON.parse(ev.target.result);
+      let data = JSON.parse(ev.target.result);
+      if (data && data.localStorage) data = fromRescueFile(data.localStorage);
       if (!Array.isArray(data.items)) throw new Error('bad');
       const incoming = normalizeItems(data.items);
       const ok = await confirmDialog(t('import_c'), t('import_s', S.items.length, incoming.length), t('import_ok_btn'));
@@ -918,6 +919,13 @@ function importData(file) {
     }
   };
   reader.readAsText(file);
+}
+
+// rescue.html backups hold raw localStorage strings; turn them into the normal export shape
+function fromRescueFile(ls) {
+  const get = k => { try { return JSON.parse(ls[k]); } catch { return null; } };
+  const items = ['base-inv-v6', 'base-inv-v5', 'base-inventory-v5', 'base-inventory-v4'].map(get).find(Array.isArray);
+  return { items, cats: get('base-inv-cats-v6'), pinned: get('base-inv-pinned-v6') };
 }
 
 function snapshot() { return JSON.parse(JSON.stringify({ items: S.items, cats: S.cats, pinned: S.pinned, pack: S.pack })); }
@@ -1269,12 +1277,43 @@ function t(key, ...args) {
   return typeof v === 'function' ? v(...args) : v;
 }
 
+// ── RESTORE FROM OLD ADDRESS ──────────────────────────────────────────────────
+// rescue.html (hosted on the old site address) sends the old data here in the URL hash:
+// #restore=<base64url JSON {kind:'storage-transfer', keys:{storageKey: rawString}}>.
+// The hash never reaches the server. Current data is kept under '<key>.before-restore'.
+function restoreFromHash() {
+  const m = location.hash.match(/^#restore=([A-Za-z0-9_-]+)$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  let keys;
+  try {
+    const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const data = JSON.parse(new TextDecoder().decode(bytes));
+    keys = Object.fromEntries(Object.entries(data.keys || {})
+      .filter(([k, v]) => (k.startsWith('base-inv') || k.startsWith('base-inventory')) && typeof v === 'string'));
+  } catch { alert('Restore link is damaged / קישור השחזור פגום'); return; }
+  if (!Object.keys(keys).length) return;
+  const had = readJSON(K.items, []);
+  if (Array.isArray(had) && had.length &&
+      !confirm(`Replace the ${had.length} items here with your old list?\nלהחליף את ${had.length} הפריטים כאן ברשימה הישנה?`)) return;
+  for (const [k, v] of Object.entries(keys)) {
+    const cur = localStorage.getItem(k);
+    if (cur !== null && cur !== v) localStorage.setItem(k + '.before-restore', cur);
+    localStorage.setItem(k, v);
+  }
+  restoredFromHash = true;
+}
+let restoredFromHash = false;
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
+try { restoreFromHash(); } catch {}
 load();
 applyTheme();
 applyLang();
 bindEvents();
 setView(S.view);
+if (restoredFromHash) toast(t('imported', S.items.length));
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

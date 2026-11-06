@@ -26,4 +26,16 @@ A mobile-first Hebrew/English app for tracking your gear at base: what's there, 
 Open `index.html` in any browser. No install needed.
 Data is saved locally in your browser (localStorage). Data from earlier versions loads automatically.
 
-**Live site:** https://poh-rull.github.io/base_list/
+**Live site:** https://arcdemonx.github.io/base_list/
+
+## Moving data after a username change
+Data lives in the browser, tied to the site address (`<username>.github.io`), not to the repo. After a rename the app opens empty at the new address. The old data is still in the browser, under the old address.
+
+`rescue.html` gets it back. It has to be served from the old address, then opened in the same browser:
+1. Sign in to the GitHub account that now holds the old name (`PoH-rull`).
+2. Go to https://github.com/new/import. Use `https://github.com/ArcDemonX/base_list` as the URL and `base_list` as the name, and make it **Public**.
+3. In the imported repo: Settings → Pages → Deploy from a branch → `master` / root → Save. Wait about a minute.
+4. Open https://poh-rull.github.io/base_list/rescue.html in the browser where you used the app. Tap **Download backup** first, then **Move to new site**.
+
+Every page on `poh-rull.github.io` shares the same storage, so one rescue page sees both apps' data.
+The page only reads storage. The move puts the data in the URL `#hash`, which is never sent to any server. Anything already at the new address is kept under a `.before-restore` key.
